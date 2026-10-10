@@ -44,12 +44,12 @@ def risk_level(p: float) -> str:
     return "low" if p < 0.33 else ("medium" if p < 0.66 else "high")
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"service": "CardioMap 3D API", "docs": "/docs"}
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok", "models_loaded": list(pipes.keys()),
             "explanation_method": Explainer.method}
