@@ -1,0 +1,63 @@
+{
+  "CAD": {
+    "model": "LogReg",
+    "params": {
+      "clf__C": 0.03613894271216528
+    },
+    "nested_cv": {
+      "accuracy": 0.8778877887788779,
+      "precision": 0.945273631840796,
+      "recall": 0.8796296296296297,
+      "f1": 0.9112709832134293,
+      "roc_auc": 0.9262984248616433
+    }
+  },
+  "LAD": {
+    "model": "RandomForest",
+    "params": {
+      "clf__max_depth": 5,
+      "clf__max_features": "sqrt",
+      "clf__min_samples_leaf": 2,
+      "clf__n_estimators": 367
+    },
+    "nested_cv": {
+      "accuracy": 0.7953795379537953,
+      "precision": 0.8042328042328042,
+      "recall": 0.8587570621468926,
+      "f1": 0.8306010928961749,
+      "roc_auc": 0.8491615101784593
+    }
+  },
+  "LCX": {
+    "model": "RandomForest",
+    "params": {
+      "clf__max_depth": 8,
+      "clf__max_features": "sqrt",
+      "clf__min_samples_leaf": 3,
+      "clf__n_estimators": 378
+    },
+    "nested_cv": {
+      "accuracy": 0.6798679867986799,
+      "precision": 0.5873015873015873,
+      "recall": 0.6218487394957983,
+      "f1": 0.6040816326530613,
+      "roc_auc": 0.7343807088052611
+    }
+  },
+  "RCA": {
+    "model": "RandomForest",
+    "params": {
+      "clf__max_depth": null,
+      "clf__max_features": "log2",
+      "clf__min_samples_leaf": 4,
+      "clf__n_estimators": 398
+    },
+    "nested_cv": {
+      "accuracy": 0.6732673267326733,
+      "precision": 0.5652173913043478,
+      "recall": 0.5701754385964912,
+      "f1": 0.5676855895196506,
+      "roc_auc": 0.7116170054766545
+    }
+  }
+}
