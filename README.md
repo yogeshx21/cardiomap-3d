@@ -43,7 +43,7 @@ CardioMap 3D takes a patient's clinical information and shows the predicted risk
 
 **Multimodal inputs:** the model combines several kinds of clinical information in one
 prediction: demographics and risk factors, symptoms, ECG findings, laboratory tests and
-echocardiography measurements (55 input features from the Z-Alizadeh Sani dataset). The output
+echocardiography measurements (59 input features from the Z-Alizadeh Sani dataset). The output
 is also multimodal: numbers, explanations and a 3D visualization.
 
 ## Key features
@@ -153,8 +153,9 @@ Features that are not sent are filled with the training median.
 ## Dataset
 
 Z-Alizadeh Sani dataset (extended version, UCI Machine Learning Repository):
-303 patients and 59 columns covering demographics, symptoms, ECG, laboratory tests,
-echocardiography and the angiography outcome for LAD, LCX and RCA.
+303 patients with 59 input features covering demographics, symptoms, ECG, laboratory tests
+and echocardiography. The angiography outcomes (Cath, LAD, LCX, RCA) are the prediction
+targets and are never used as model inputs.
 
 ## Machine learning pipeline
 
@@ -225,26 +226,118 @@ cardio-3d/
 `-- README.md
 ```
 
-## Run locally
+## Prerequisites
 
-Requirements: Python 3.14 (or compatible) and Node.js 20+.
+| Tool | Version used | How to check |
+|---|---|---|
+| Git | any recent version | `git --version` |
+| Python | 3.14 (tested) | `python --version` |
+| Node.js and npm | Node 24 (tested), Node 20+ should work | `node -v` |
+| Browser | a recent Chrome or Edge (sound and voice features need Web Audio / Web Speech) | |
+
+No API keys, accounts or paid services are needed. An internet connection is needed once to
+install packages (and to load the web fonts). All Python dependencies are pinned in
+`backend/requirements.txt`; frontend dependencies are listed in `frontend/package.json`.
+
+## Setup
+
+**1. Get the code**
 
 ```bash
-# 1) Backend
+git clone https://github.com/yogeshx21/cardiomap-3d.git
+cd cardiomap-3d
+```
+
+**2. Backend (Python)**
+
+Windows:
+
+```bash
 python -m venv venv
 venv\Scripts\activate
 pip install -r backend/requirements.txt
-uvicorn main:app --app-dir backend --reload
+```
 
-# 2) Frontend (new terminal)
+macOS / Linux:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+**3. Frontend (Node.js)**
+
+```bash
 cd frontend
 npm install
+cd ..
+```
+
+## Run the project
+
+Open **two terminals**, both in the repository root (the `cardiomap-3d` folder).
+
+**Terminal 1: backend API** (virtual environment active)
+
+```bash
+uvicorn main:app --app-dir backend --reload
+```
+
+The API starts on http://127.0.0.1:8000 (interactive docs at http://127.0.0.1:8000/docs).
+Wait for the line `Application startup complete.`
+
+**Terminal 2: web app**
+
+```bash
+cd frontend
 npm run dev
 ```
 
-Open http://localhost:5173 (the API runs on http://127.0.0.1:8000).
+Open http://localhost:5173 and click **Start analysis**.
 
-To use another backend, set `VITE_API_URL` before building the frontend.
+## Check that it works
+
+- http://127.0.0.1:8000/health should return `"status":"ok"` with the four models
+  `CAD`, `LAD`, `LCX`, `RCA` loaded.
+- In the app, press **Diabetic smoker, 66 y**: the arteries turn yellow or red, the gauge
+  shows a high overall risk and the right panel lists the factors behind the score.
+- Click an artery to zoom to it, open the **What-if** and **Model performance** tabs,
+  or press **Auto tour** for a guided demo.
+
+## Configuration (optional)
+
+| Setting | Where | Meaning |
+|---|---|---|
+| `VITE_API_URL` | frontend (for example in `frontend/.env.local`) | Backend URL. Default: `http://127.0.0.1:8000` |
+| `LITE_EXPLAIN=1` | backend environment variable | Use lightweight explanations instead of SHAP on low-memory hosts |
+
+## Production build of the frontend
+
+```bash
+cd frontend
+npm run build
+```
+
+The static site is written to `frontend/dist`.
+
+## Training scripts (for reference)
+
+The trained models are already included in `backend/models`, so retraining is not needed
+to run the app. The scripts used to build them are in `backend/`: `data.py` (loading and
+cleaning), `eda.py`, `train_baseline.py`, `train_final.py` and `explain_global.py`. They read
+`data/dataset.xlsx` and need `openpyxl` and `matplotlib` in addition to the backend
+requirements.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "The system cannot find the path specified" | Run the commands from the repository root |
+| The browser says "localhost refused to connect" | The server is not running. Start both terminals and keep them open |
+| The app shows "Waking up the AI server" | On the hosted demo the free backend is starting up; wait about a minute |
+| Port 8000 is already in use | Start the backend with `--port 8001` and set `VITE_API_URL=http://127.0.0.1:8001` |
+| No heartbeat sound or voice | Click the **Sound** or **Read aloud** button first (browsers block automatic audio) and use Chrome or Edge |
 
 ## Deployment
 
