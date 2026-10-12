@@ -6,6 +6,8 @@
 > It is not a medical device and is not a substitute for formal diagnostic imaging
 > or a clinician's judgement.
 
+📄 **[Read the full project documentation (PDF)](docs/CardioMap3D_documentation.pdf)**
+
 ## Live links
 
 | What | Link |
@@ -13,6 +15,7 @@
 | Live demo (web app) | https://cardiomap-3d.vercel.app |
 | Backend API docs (Swagger) | https://cardiomap-api.onrender.com/docs |
 | Source code | https://github.com/yogeshx21/cardiomap-3d |
+| Project documentation (PDF) | [CardioMap3D_documentation.pdf](docs/CardioMap3D_documentation.pdf) |
 
 > The backend runs on a free hosting tier and goes to sleep when idle. If the demo shows
 > "Server start ho raha hai...", wait about a minute and it will load automatically.
@@ -222,6 +225,8 @@ cardio-3d/
 |       |-- lib.js           API calls, colors, demo patients
 |       `-- *.css            index, extra, home, ecg, whatif and theme styles
 |-- data/dataset.xlsx        Z-Alizadeh Sani dataset
+|-- docs/
+|   `-- CardioMap3D_documentation.pdf   Full project documentation
 |-- results/                 Metrics, ROC curves, SHAP plots
 `-- README.md
 ```
