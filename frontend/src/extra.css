@@ -9,4 +9,6 @@
 .imgbox { background: #fff; border-radius: 8px; padding: 8px; max-width: 640px; margin-bottom: 8px; }
 .imgbox img { width: 100%; display: block; }
 .note-list { color: #bdbdbd; line-height: 1.6; padding-left: 18px; font-size: 13px; }
-.summary { margin: 0 0 10px; font-size: 13.5px; }
+.summary { margin: 0 0 10px; font-size: 13.5px; }.bpm { position: absolute; bottom: 12px; right: 12px; color: #fff; font-size: 13px; background: rgba(0,0,0,.6); border: 1px solid #555; border-radius: 999px; padding: 4px 12px; }
+.tour-cap { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: 42%; text-align: center; font-size: 13px; color: #000; background: #fff; border-radius: 999px; padding: 6px 16px; font-weight: 600; }
+.legend { flex-wrap: wrap; max-width: 330px; } .legend::after { content: "Narrowing and flow speed follow predicted risk (schematic)."; flex-basis: 100%; font-size: 11px; color: #8a8a8a; }

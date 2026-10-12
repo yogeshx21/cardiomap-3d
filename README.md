@@ -43,17 +43,26 @@ CardioMap 3D takes a patient's clinical information and shows the predicted risk
 
 **Multimodal inputs:** the model combines several kinds of clinical information in one
 prediction: demographics and risk factors, symptoms, ECG findings, laboratory tests and
-echocardiography measurements (59 features from the Z-Alizadeh Sani dataset). The output
+echocardiography measurements (55 input features from the Z-Alizadeh Sani dataset). The output
 is also multimodal: numbers, explanations and a 3D visualization.
 
 ## Key features
 
 - 4 prediction targets: overall CAD, LAD, LCX and RCA
-- Interactive 3D heart: rotate, zoom, click an artery, X-ray (transparent) mode, auto-rotate, reset view
+- Landing page with a live 3D heart whose arteries change color on their own
+- Interactive 3D heart: rotate, zoom, X-ray (transparent) mode, auto-rotate, reset view
+- Click an artery (or its card) and the camera flies to it while the other arteries fade
 - Artery colors update live (about 0.3 s after any input changes)
+- Blood-flow pulses and a schematic narrowing on each artery that follow its predicted risk,
+  plus a pulsing warning ring on high-risk arteries
+- Heartbeat animation and optional heartbeat sound that follow the patient's pulse rate (PR)
+- Illustrative ECG strip that changes with ECG inputs (T inversion, ST changes, Q wave, LVH)
+- Overall CAD risk gauge and a "Read aloud" voice summary of the result
+- What-if explorer: see how the scores respond when blood pressure, LDL, smoking, BMI or
+  blood sugar change
+- Three demo patients and an automatic guided tour
 - Explainable AI: top contributing factors per patient (SHAP) and global feature importance
 - "Model performance" tab with metrics table, ROC curves and SHAP plots
-- Ready-made low-risk and high-risk sample patients for quick demos
 - "Highest-risk vessel" summary and a clear clinical safety disclaimer
 - Leakage-safe training (target columns removed from inputs)
 
@@ -93,6 +102,7 @@ Python 3.14, JavaScript (React JSX), HTML, CSS
 | React + Vite | Web app and build tooling |
 | Three.js | 3D graphics |
 | @react-three/fiber, @react-three/drei | React bindings for Three.js, orbit controls and labels |
+| Web Audio API, Web Speech API, Canvas 2D | Heartbeat sound, voice summary, ECG strip (built into the browser, no extra libraries) |
 
 The 3D heart is **procedurally generated in code** (no downloaded 3D model), so there
 are no licence issues and each artery is mapped directly to a model output.
@@ -175,6 +185,9 @@ with clinical knowledge.
 - LAD, LCX and RCA (with their main branches) are drawn as tubes on the heart surface.
 - Probability to color: green (low) to yellow (medium) to red (high).
 - Clicking an artery (or its card) shows that artery's own explanation.
+- Each artery shows moving flow pulses and a narrowed section whose depth follows the
+  predicted risk. The location of the narrowing is illustrative only, because the dataset
+  gives a risk label per vessel but no lesion position.
 
 ## Project structure
 
@@ -195,14 +208,18 @@ cardio-3d/
 |   |-- package.json
 |   |-- public/              Logo and result images
 |   `-- src/
-|       |-- App.jsx          Layout, tabs, live prediction
-|       |-- Heart3D.jsx      3D heart and arteries
+|       |-- App.jsx          Pages, tabs, live prediction, auto tour
+|       |-- Home.jsx         Landing page
+|       |-- Heart3D.jsx      3D heart, arteries, flow, camera focus
 |       |-- PatientForm.jsx  Input form and sliders
-|       |-- Results.jsx      Risk dashboard and SHAP factors
+|       |-- Results.jsx      Risk gauge, dashboard and SHAP factors
+|       |-- WhatIf.jsx       What-if explorer
 |       |-- Performance.jsx  Model performance tab
-|       |-- lib.js           API calls, colors, sample patients
-|       |-- index.css        Main theme
-|       `-- extra.css        Tabs and performance page styles
+|       |-- EcgStrip.jsx     Illustrative ECG strip
+|       |-- heartbeat.js     Heartbeat sound (Web Audio)
+|       |-- voice.js         Read-aloud summary (Web Speech)
+|       |-- lib.js           API calls, colors, demo patients
+|       `-- *.css            index, extra, home, ecg, whatif and theme styles
 |-- data/dataset.xlsx        Z-Alizadeh Sani dataset
 |-- results/                 Metrics, ROC curves, SHAP plots
 `-- README.md
@@ -246,6 +263,9 @@ To use another backend, set `VITE_API_URL` before building the frontend.
 - The 3D artery layout is schematic (anatomically inspired), not patient-specific imaging.
 - The dataset has no lesion location, so regional wall-motion abnormality (RWMA) is used
   only as an input feature.
+- The ECG strip is generated from the entered ECG findings; it is not a real recording.
+- What-if results show how the model responds to changed inputs. They are not medical advice
+  and do not prove that a change would lower a real person's risk.
 - Not validated on external hospitals; not for real clinical decisions.
 
 ## Acknowledgements

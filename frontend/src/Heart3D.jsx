@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { riskColor } from './lib'
+import { playBeat } from './heartbeat'
 
 const smooth = (a, b, x) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
@@ -66,6 +67,29 @@ function makeCurve(points, offset = 0.025) {
   return new THREE.CatmullRomCurve3(pts)
 }
 
+// Tube with a localized narrowing (illustrative stenosis). depth 0 = none, 0.7 = strong.
+function narrowedTube(curve, segments, radius, radial, depth, center) {
+  const g = new THREE.TubeGeometry(curve, segments, radius, radial, false)
+  if (depth <= 0.001) return g
+  const pos = g.attributes.position
+  const c = new THREE.Vector3()
+  const v = new THREE.Vector3()
+  for (let i = 0; i <= segments; i++) {
+    const u = i / segments
+    const s = 1 - depth * Math.exp(-(((u - center) / 0.09) ** 2))
+    curve.getPointAt(u, c)
+    for (let j = 0; j <= radial; j++) {
+      const idx = i * (radial + 1) + j
+      v.fromBufferAttribute(pos, idx)
+      v.sub(c).multiplyScalar(s).add(c)
+      pos.setXYZ(idx, v.x, v.y, v.z)
+    }
+  }
+  pos.needsUpdate = true
+  g.computeVertexNormals()
+  return g
+}
+
 // ---------- Coronary paths in (phi, ny) space ----------
 const grooveAt = (ny) => 0.25 - 0.3 * ny
 
@@ -96,10 +120,13 @@ const IVC = [[-0.65, 0.3, -0.3], [-0.68, -0.4, -0.35]]
 const PV1 = [[0.6, 0.9, -0.6], [1.1, 1.0, -0.65]]
 const PV2 = [[0.6, 1.05, -0.5], [1.1, 1.3, -0.5]]
 
-function Flesh({ color, xray }) {
+function Flesh({ color, xray, matRef }) {
   return (
     <meshPhysicalMaterial
+      ref={matRef}
       color={color}
+      emissive="#ff2a2a"
+      emissiveIntensity={0}
       roughness={0.55}
       clearcoat={0.3}
       clearcoatRoughness={0.6}
@@ -148,18 +175,88 @@ function Vein({ curve }) {
   )
 }
 
-function Artery({ name, data, prob, selected, onSelect }) {
+// Light pulses sliding along an artery. Higher risk = slower flow.
+function Flow({ curve, prob, count, radius, color, depth = 0, center = 0.4 }) {
+  const ref = useRef()
+  const phase = useRef(Math.random())
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const up = useMemo(() => new THREE.Vector3(0, 1, 0), [])
+  const tan = useMemo(() => new THREE.Vector3(), [])
+  const tint = useMemo(
+    () => new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.6),
+    [color]
+  )
+  const speed = 0.2 * (1 - 0.75 * prob)
+
+  useFrame((_, delta) => {
+    if (!ref.current) return
+    phase.current = (phase.current + Math.min(delta, 0.1) * speed) % 1
+    for (let i = 0; i < count; i++) {
+      const u = (i / count + phase.current) % 1
+      curve.getPointAt(u, dummy.position)
+      curve.getTangentAt(u, tan)
+      dummy.quaternion.setFromUnitVectors(up, tan)
+      const sc = 1 - depth * Math.exp(-(((u - center) / 0.09) ** 2))
+      dummy.scale.set(sc, 1, sc)
+      dummy.updateMatrix()
+      ref.current.setMatrixAt(i, dummy.matrix)
+    }
+    ref.current.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, count]} frustumCulled={false}>
+      <cylinderGeometry args={[radius, radius, 0.09, 12]} />
+      <meshBasicMaterial color={tint} transparent opacity={0.7} toneMapped={false} />
+    </instancedMesh>
+  )
+}
+
+// Pulsing warning ring around the narrowed spot of a high-risk artery
+function Warn({ curve, at, radius }) {
+  const ref = useRef()
+  const mat = useRef()
+  const { pos, quat } = useMemo(() => {
+    const pos = curve.getPointAt(at, new THREE.Vector3())
+    const tan = curve.getTangentAt(at, new THREE.Vector3())
+    const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan)
+    return { pos, quat }
+  }, [curve, at])
+
+  useFrame(({ clock }) => {
+    const t = (clock.elapsedTime % 1.4) / 1.4
+    if (ref.current) ref.current.scale.setScalar(0.8 + 1.1 * t)
+    if (mat.current) mat.current.opacity = 0.95 * (1 - t)
+  })
+
+  return (
+    <mesh ref={ref} position={pos} quaternion={quat}>
+      <torusGeometry args={[radius, 0.01, 8, 36]} />
+      <meshBasicMaterial ref={mat} color="#ff4d4d" transparent opacity={0.9} depthWrite={false} toneMapped={false} />
+    </mesh>
+  )
+}
+
+function Artery({ name, data, prob, selected, dim, onSelect }) {
   const color = prob == null ? '#888888' : riskColor(prob)
   const rMain = selected ? 0.062 : 0.045
   const rBr = selected ? 0.04 : 0.028
+  const depth =
+    prob == null ? 0 : Math.round(Math.min(1, Math.max(0, prob)) * 0.7 * 20) / 20
 
-  const mainGeo = useMemo(() => new THREE.TubeGeometry(data.main, 120, rMain, 14, false), [data, rMain])
+  const mainGeo = useMemo(
+    () => narrowedTube(data.main, 120, rMain, 14, depth, data.stenosisAt),
+    [data, rMain, depth]
+  )
   const brGeos = useMemo(
     () => data.branches.map((c) => new THREE.TubeGeometry(c, 60, rBr, 10, false)),
     [data, rBr]
   )
   const hit = useMemo(() => new THREE.TubeGeometry(data.main, 40, 0.14, 8, false), [data])
   const labelPos = useMemo(() => data.main.getPoint(data.labelAt), [data])
+
+  useEffect(() => () => mainGeo.dispose(), [mainGeo])
+  useEffect(() => () => brGeos.forEach((g) => g.dispose()), [brGeos])
 
   const over = (e) => {
     e.stopPropagation()
@@ -175,6 +272,9 @@ function Artery({ name, data, prob, selected, onSelect }) {
       roughness={0.35}
       emissive={color}
       emissiveIntensity={selected ? 0.7 : 0.2}
+      transparent={dim}
+      opacity={dim ? 0.22 : 1}
+      depthWrite={!dim}
     />
   )
 
@@ -186,6 +286,20 @@ function Artery({ name, data, prob, selected, onSelect }) {
           {mat}
         </mesh>
       ))}
+
+      {prob != null && !dim && (
+        <>
+          <Flow curve={data.main} prob={prob} count={6} radius={rMain * 1.12} color={color} depth={depth} center={data.stenosisAt} />
+          {data.branches.map((c, i) => (
+            <Flow key={i} curve={c} prob={prob} count={3} radius={rBr * 1.2} color={color} />
+          ))}
+        </>
+      )}
+
+      {prob != null && prob >= 0.66 && !dim && (
+        <Warn curve={data.main} at={data.stenosisAt} radius={rMain * 1.9} />
+      )}
+
       <mesh
         geometry={hit}
         onClick={(e) => {
@@ -207,31 +321,64 @@ function Artery({ name, data, prob, selected, onSelect }) {
   )
 }
 
-function HeartModel({ preds, selected, onSelect, xray }) {
+function HeartModel({ preds, selected, onSelect, xray, bpm, soundOn, focus }) {
+  const rig = useRef()
   const beat = useRef()
+  const flesh = useRef()
+  const phase = useRef(0)
   const ventGeo = useMemo(() => buildVentricles(), [])
   const arteries = useMemo(
     () => ({
-      LAD: { main: makeCurve(LAD_MAIN), branches: LAD_BR.map((b) => makeCurve(b)), labelAt: 0.45 },
-      LCX: { main: makeCurve(LCX_MAIN), branches: LCX_BR.map((b) => makeCurve(b)), labelAt: 0.55 },
-      RCA: { main: makeCurve(RCA_MAIN), branches: RCA_BR.map((b) => makeCurve(b)), labelAt: 0.3 },
+      LAD: { main: makeCurve(LAD_MAIN), branches: LAD_BR.map((b) => makeCurve(b)), labelAt: 0.45, stenosisAt: 0.38 },
+      LCX: { main: makeCurve(LCX_MAIN), branches: LCX_BR.map((b) => makeCurve(b)), labelAt: 0.55, stenosisAt: 0.45 },
+      RCA: { main: makeCurve(RCA_MAIN), branches: RCA_BR.map((b) => makeCurve(b)), labelAt: 0.3, stenosisAt: 0.4 },
     }),
     []
   )
   const veinCurve = useMemo(() => makeCurve(VEIN, 0.02), [])
 
-  useFrame(({ clock }) => {
-    if (beat.current) {
-      beat.current.scale.setScalar(1 + 0.012 * Math.sin(clock.elapsedTime * 2.2))
+  // When an artery is selected, tell the camera rig where to look (world coordinates)
+  useEffect(() => {
+    const g = rig.current
+    if (!g) return
+    g.updateWorldMatrix(true, false)
+    const a = selected ? arteries[selected] : null
+    if (a) {
+      const local = a.main.getPointAt(a.labelAt, new THREE.Vector3())
+      const world = g.localToWorld(local)
+      const center = g.localToWorld(new THREE.Vector3(0.1, 0.1, 0))
+      focus.target.copy(world)
+      focus.dir.copy(world).sub(center)
+      focus.dir.y += 0.15
+      focus.dir.normalize()
+      focus.mode = 'focus'
+    } else {
+      focus.mode = 'home'
     }
+    focus.active = true
+    focus.t = 0
+  }, [selected, arteries, focus])
+
+  // lub-dub: two quick bumps per beat; speed follows bpm; sound fires at the start of each beat
+  useFrame((state, delta) => {
+    phase.current += Math.min(delta, 0.1) * (bpm / 60)
+    if (phase.current >= 1) {
+      phase.current -= 1
+      if (soundOn) playBeat(60 / bpm)
+    }
+    const p = phase.current
+    const b1 = Math.exp(-(((p - 0.06) / 0.05) ** 2))
+    const b2 = Math.exp(-(((p - 0.3) / 0.06) ** 2))
+    if (beat.current) beat.current.scale.setScalar(1 + 0.04 * b1 + 0.028 * b2)
+    if (flesh.current) flesh.current.emissiveIntensity = 0.3 * (b1 + 0.7 * b2)
   })
 
   return (
     <group position={[0, -0.34, 0]} scale={0.8}>
-      <group rotation={[0.08, -0.35, 0]}>
+      <group ref={rig} rotation={[0.08, -0.35, 0]}>
         <group ref={beat}>
           <mesh geometry={ventGeo}>
-            <Flesh color="#d9a79c" xray={xray} />
+            <Flesh color="#d9a79c" xray={xray} matRef={flesh} />
           </mesh>
 
           {/* Atria + auricles */}
@@ -259,6 +406,7 @@ function HeartModel({ preds, selected, onSelect, xray }) {
               data={data}
               prob={preds?.[name]?.probability ?? null}
               selected={selected === name}
+              dim={selected != null && selected !== name}
               onSelect={onSelect}
             />
           ))}
@@ -268,14 +416,40 @@ function HeartModel({ preds, selected, onSelect, xray }) {
   )
 }
 
-function Controls({ autoRotate, resetSignal }) {
-  const ref = useRef()
+// Smoothly flies the camera to the selected artery (and back home when nothing is selected)
+function CameraRig({ focus, ctrlRef }) {
+  const { camera } = useThree()
+  const want = useMemo(() => new THREE.Vector3(), [])
+  const homePos = useMemo(() => new THREE.Vector3(0, 0.2, 5.2), [])
+  const homeTgt = useMemo(() => new THREE.Vector3(0, 0, 0), [])
+
+  useFrame((_, delta) => {
+    const c = ctrlRef.current
+    if (!c || !focus.active) return
+    focus.t += delta
+    const k = 1 - Math.exp(-delta * 4)
+    let tgt = homeTgt
+    if (focus.mode === 'focus') {
+      tgt = focus.target
+      want.copy(focus.target).addScaledVector(focus.dir, focus.distance)
+    } else {
+      want.copy(homePos)
+    }
+    c.target.lerp(tgt, k)
+    camera.position.lerp(want, k)
+    c.update()
+    if (focus.t > 1.8) focus.active = false
+  })
+  return null
+}
+
+function Controls({ autoRotate, resetSignal, ctrlRef }) {
   useEffect(() => {
-    if (ref.current) ref.current.reset()
-  }, [resetSignal])
+    if (ctrlRef.current) ctrlRef.current.reset()
+  }, [resetSignal, ctrlRef])
   return (
     <OrbitControls
-      ref={ref}
+      ref={ctrlRef}
       enablePan={false}
       enableDamping
       autoRotate={autoRotate}
@@ -286,20 +460,50 @@ function Controls({ autoRotate, resetSignal }) {
   )
 }
 
-export default function Heart3D({ preds, selected, onSelect, autoRotate, xray, resetSignal }) {
+export default function Heart3D({
+  preds,
+  selected,
+  onSelect,
+  autoRotate,
+  xray,
+  resetSignal,
+  bpm = 72,
+  soundOn = false,
+}) {
+  const ctrlRef = useRef()
+  const focus = useMemo(
+    () => ({
+      target: new THREE.Vector3(),
+      dir: new THREE.Vector3(0, 0, 1),
+      distance: 3,
+      mode: 'home',
+      active: false,
+      t: 0,
+    }),
+    []
+  )
+
   return (
     <Canvas
       camera={{ position: [0, 0.2, 5.2], fov: 40 }}
       dpr={[1, 1.75]}
       onPointerMissed={() => onSelect(null)}
     >
-      <color attach="background" args={['#000000']} />
       <ambientLight intensity={0.7} />
       <hemisphereLight args={['#ffffff', '#444455', 0.5]} />
       <directionalLight position={[4, 5, 5]} intensity={1.6} />
       <directionalLight position={[-4, -2, -3]} intensity={0.5} />
-      <HeartModel preds={preds} selected={selected} onSelect={onSelect} xray={xray} />
-      <Controls autoRotate={autoRotate} resetSignal={resetSignal} />
+      <HeartModel
+        preds={preds}
+        selected={selected}
+        onSelect={onSelect}
+        xray={xray}
+        bpm={bpm}
+        soundOn={soundOn}
+        focus={focus}
+      />
+      <Controls autoRotate={autoRotate} resetSignal={resetSignal} ctrlRef={ctrlRef} />
+      <CameraRig focus={focus} ctrlRef={ctrlRef} />
     </Canvas>
   )
 }
